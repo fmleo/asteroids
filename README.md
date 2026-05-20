@@ -1,9 +1,11 @@
 # Asteroides
 
-Jogo feito em PyGame para a disciplina optativa Desenvolvimento de Jogos Digitais do curso de Sistemas de informação do IFRS Vacaria
+Clone de Asteroids feito em PyGame para a disciplina optativa Desenvolvimento de Jogos Digitais do curso de Sistemas de informação do IFRS Vacaria
 
 # Créditos
 
-Trilha sonora: Gustavo Corona
-Asteroides: https://forum.thegamecreators.com/thread/209786
-Nave: https://kenney.nl/assets/space-shooter-extension
+|               |                                                                   |
+| ------------- | ----------------------------------------------------------------- |
+| Trilha sonora | [Gustavo Corona](https://gustavocompositor.github.io/portifolio/) |
+| Asteroides    | https://forum.thegamecreators.com/thread/209786                   |
+| Nave          | https://kenney.nl/assets/space-shooter-extension                  |
