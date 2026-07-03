@@ -4,23 +4,18 @@ import pygame
 
 from asteroid import Asteroid, AsteroidSize
 from bullet import Bullet
+from player import Player
 from scene import Scene
 from settings import (
     BULLET_RADIUS,
     CORNERS,
-    FRICTION,
-    MAX_SPEED,
     MIDDLE_H,
     MIDDLE_W,
-    PLAYER_H,
     PLAYER_RADIUS,
-    PLAYER_W,
-    ROTATION_SPEED,
     SCREEN_W,
     SHOT_DELAY,
-    THRUSTER_ACCELERATION,
 )
-from utils import circles_collide, get_cos_sin, wrap
+from utils import circles_collide
 
 
 class GameScene(Scene):
@@ -47,170 +42,131 @@ class GameScene(Scene):
         pygame.mixer.music.play(-1)
 
     def reset_state(self):
-        self.player_rotation = 180
-        self.player_x = MIDDLE_W
-        self.player_y = MIDDLE_H
-        self.velocity_x = 0.0
-        self.velocity_y = 0.0
+        self.player = Player(self.ship_img)
         self.bullets: list[Bullet] = []
         self.asteroids: list[Asteroid] = []
         self.last_shot_tick = 0
         self.level = 0
-        self.score = 0
         self.lives = 3
-        self.respawn_timer = 0
+
+    # -- -- Update
 
     def update(self):
         keys = pygame.key.get_pressed()
 
-        # -- Ações do jogador
-        # -- -- girar para a direita
-        if keys[pygame.K_LEFT]:
-            self.player_rotation = (self.player_rotation + ROTATION_SPEED) % 360
+        self.player.handle_input(keys)
+        self.player.tick()
 
-        # -- -- girar para a esquerda
-        if keys[pygame.K_RIGHT]:
-            self.player_rotation = (self.player_rotation - ROTATION_SPEED) % 360
+        self._handle_shooting(keys)
+        self._update_bullets()
+        self._spawn_asteroids()
+        self._update_asteroids()
+        self._check_collisions()
+        self._cleanup_objects()
 
-        # -- -- Aceleração (thrust)
-        if keys[pygame.K_UP]:
-            cos, sin = get_cos_sin(self.player_rotation)
-            self.velocity_x += sin * THRUSTER_ACCELERATION
-            self.velocity_y += cos * THRUSTER_ACCELERATION
-
-            # limitar velocidade máxima
-            speed = (self.velocity_x**2 + self.velocity_y**2) ** 0.5
-            if speed > MAX_SPEED:
-                self.velocity_x = self.velocity_x / speed * MAX_SPEED
-                self.velocity_y = self.velocity_y / speed * MAX_SPEED
-
-        # -- Movimentação, calculada quando o jogador não está acelerando
-        # -- -- cálculo do atrito
-        self.velocity_x *= FRICTION
-        self.velocity_y *= FRICTION
-
-        # -- -- movimentação do jogador
-        self.player_x += self.velocity_x
-        self.player_y += self.velocity_y
-        self.player_x, self.player_y = wrap(self.player_x, self.player_y)
-
-        # -- Diminuir timer de invencibilidade
-        self.respawn_timer -= 1
-
-        # -- Tiros
-        # -- -- atirar
+    def _handle_shooting(self, keys):
         if keys[pygame.K_SPACE]:
-            # se o tick atual - o tick do ultimo tiro for maior que o delay definido, o jogador pode atirar
             if pygame.time.get_ticks() - self.last_shot_tick > SHOT_DELAY:
                 self.last_shot_tick = pygame.time.get_ticks()
                 self.bullets.append(
-                    Bullet(x=self.player_x, y=self.player_y, angle=self.player_rotation)
+                    Bullet(x=self.player.x, y=self.player.y, angle=self.player.rotation)
                 )
 
-        # -- -- movimentação do tiro
+    def _update_bullets(self):
         for bullet in self.bullets:
             bullet.tick()
 
-        # -- Asteroides
-        # -- -- spawn
+    def _spawn_asteroids(self):
         if len(self.asteroids) == 0:
             self.level += 1
-
             for i in range(self.level * 4):
                 x, y = CORNERS[i % 4]
-                asteroid = Asteroid(size=AsteroidSize.LARGE, x=x, y=y)
-                self.asteroids.append(asteroid)
+                self.asteroids.append(Asteroid(size=AsteroidSize.LARGE, x=x, y=y))
 
-        # -- -- movimentação dos asteroides
+    def _update_asteroids(self):
         for asteroid in self.asteroids:
             asteroid.tick()
 
-        # -- Remoção de objetos
-        bullets_to_remove = set()
-        # -- -- remoção de tiros
+    def _check_collisions(self):
+        self._bullets_to_remove: set[Bullet] = set()
+        self._asteroids_to_remove: list[Asteroid] = []
+        self._asteroids_to_add: list[Asteroid] = []
+
         for bullet in self.bullets:
             if bullet.lifetime <= 0:
-                bullets_to_remove.add(bullet)
+                self._bullets_to_remove.add(bullet)
 
-        # -- Colisões
-        # -- -- tiro-asteroide
-        asteroids_to_add = []
-        asteroids_to_remove = []
+        self._check_bullet_asteroid_collisions()
+        self._check_player_asteroid_collisions()
+
+    def _check_bullet_asteroid_collisions(self):
         for b in self.bullets:
-            if b in bullets_to_remove:
+            if b in self._bullets_to_remove:
                 continue
             for a in self.asteroids:
-                if a in asteroids_to_remove:
+                if a in self._asteroids_to_remove:
                     continue
                 if circles_collide(b.x, b.y, BULLET_RADIUS, a.x, a.y, a.radius):
                     self.explosion_sound.play()
-
-                    bullets_to_remove.add(b)
-                    asteroids_to_remove.append(a)
-
+                    self._bullets_to_remove.add(b)
+                    self._asteroids_to_remove.append(a)
                     self.score += a.score
+                    self._asteroids_to_add.extend(a.explode())
 
-                    asteroids_to_add.extend(a.explode())
+    def _check_player_asteroid_collisions(self):
+        if self.player.is_invincible:
+            return
 
-        # -- -- nave-asteroide
-        # se for <= 0, player pode tomar dano
-        if self.respawn_timer <= 0:
-            for a in self.asteroids:
-                if a in asteroids_to_remove:
-                    continue
-                if circles_collide(
-                    self.player_x, self.player_y, PLAYER_RADIUS, a.x, a.y, a.radius
-                ):
-                    self.lives -= 1
+        for a in self.asteroids:
+            if a in self._asteroids_to_remove:
+                continue
+            if circles_collide(
+                self.player.x, self.player.y, PLAYER_RADIUS, a.x, a.y, a.radius
+            ):
+                self.lives -= 1
+                self.player.x = MIDDLE_W
+                self.player.y = MIDDLE_H
+                self.player.respawn_timer = 120
 
-                    self.player_x = MIDDLE_W
-                    self.player_y = MIDDLE_H
+                if self.lives <= 0:
+                    pygame.mixer.music.stop()
+                    self.lose_sound.play()
+                    self.active = False
+                break
 
-                    self.respawn_timer = 120  # 2 segundos
-
-                    if self.lives <= 0:
-                        pygame.mixer.music.stop()
-                        self.lose_sound.play()
-                        self.active = False
-
-        # -- Remoção de objetos
-        for a in asteroids_to_remove:
+    def _cleanup_objects(self):
+        for a in self._asteroids_to_remove:
             self.asteroids.remove(a)
-        for b in bullets_to_remove:
+        for b in self._bullets_to_remove:
             self.bullets.remove(b)
+        self.asteroids.extend(self._asteroids_to_add)
 
-        # -- Adição dos novos asteroides adicionados
-        self.asteroids.extend(asteroids_to_add)
+    # -- -- Draw
 
     def draw(self):
-        # -- Preencher tela com o plano de fundo
+        self._draw_background()
+        self._draw_bullets()
+        self._draw_asteroids()
+        self.player.draw(self.display)
+        self._draw_hud()
+
+    def _draw_background(self):
         self.display.blit(self.background_img, (0, 0))
 
-        # -- desenhar cada bala
+    def _draw_bullets(self):
         for bullet in self.bullets:
             pygame.draw.circle(self.display, "red", (bullet.x, bullet.y), BULLET_RADIUS)
 
-        # -- desenhar cada asteroide
+    def _draw_asteroids(self):
         for asteroid in self.asteroids:
             img = self.asteroid_imgs[asteroid.img_index]
-            # rotozoom usa antialiasing para escalonar e rotacionar imagens
             scaled = pygame.transform.rotozoom(
                 img, -asteroid.rotation_angle, asteroid.radius * 2 / img.get_width()
             )
             rect = scaled.get_rect(center=(asteroid.x, asteroid.y))
             self.display.blit(scaled, rect)
 
-        # -- cria uma superfície pois só superfícies podem ser rotacionadas
-        # -- após isso renderiza o objeto do player
-        player_surf = pygame.Surface((PLAYER_W, PLAYER_H), pygame.SRCALPHA)
-        # animação piscando para representar invincibilidade
-        if not (self.respawn_timer > 0 and self.respawn_timer % 10 < 5):
-            player_surf.blit(self.ship_img, (0, 0))
-        rotated_surf = pygame.transform.rotate(player_surf, self.player_rotation)
-        rotated_rect = rotated_surf.get_rect(center=(self.player_x, self.player_y))
-        self.display.blit(rotated_surf, rotated_rect)
-
-        # -- HUD
+    def _draw_hud(self):
         lives_text = self.font.render(f"Vidas: {self.lives}", True, "white")
         self.display.blit(lives_text, (10, 10))
 
