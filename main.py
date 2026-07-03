@@ -4,6 +4,7 @@ import pygame
 
 from game import GameScene
 from menu import MenuScene
+from name_entry import NameEntryScene
 from over import GameOverScene
 from scene import Scene
 from settings import SCREEN_H, SCREEN_W
@@ -43,6 +44,10 @@ class Game:
             self.scene = "game"
             self.current_scene = GameScene()
         elif self.scene == "game" and not self.current_scene.active:
+            score = self.current_scene.score
+            self.scene = "name_entry"
+            self.current_scene = NameEntryScene(score)
+        elif self.scene == "name_entry" and not self.current_scene.active:
             score = self.current_scene.score
             self.scene = "over"
             self.current_scene = GameOverScene(score)
