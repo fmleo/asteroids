@@ -1,4 +1,5 @@
 import pygame
+
 from scene import Scene
 from settings import MIDDLE_H, MIDDLE_W
 

@@ -1,6 +1,7 @@
 import sys
 
 import pygame
+
 from game import GameScene
 from menu import MenuScene
 from over import GameOverScene

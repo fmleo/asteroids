@@ -1,6 +1,7 @@
 import glob
 
 import pygame
+
 from asteroid import Asteroid, AsteroidSize
 from bullet import Bullet
 from scene import Scene
@@ -142,7 +143,7 @@ class GameScene(Scene):
                 if a in asteroids_to_remove:
                     continue
                 if circles_collide(b.x, b.y, BULLET_RADIUS, a.x, a.y, a.radius):
-                    # self.explosion_sound.play()
+                    self.explosion_sound.play()
 
                     bullets_to_remove.add(b)
                     asteroids_to_remove.append(a)
