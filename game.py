@@ -169,6 +169,8 @@ class GameScene(Scene):
     def _draw_hud(self):
         lives_text = self.font.render(f"Vidas: {self.lives}", True, "white")
         self.display.blit(lives_text, (10, 10))
+        level_text = self.font.render(f"Nível: {self.level}", True, "white")
+        self.display.blit(level_text, (10, 50))
 
         score_text = self.font.render(f"{self.score:06}", True, "white")
         score_rect = score_text.get_rect(topright=(SCREEN_W - 10, 10))
