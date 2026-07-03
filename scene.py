@@ -5,7 +5,7 @@ class Scene:
     def __init__(self):
         self.display = pygame.display.get_surface()
         self.active = True
-        self.font = pygame.font.Font(None, 50)
+        self.font = pygame.font.Font("assets/BlockBlueprint.ttf", 50)
         self.score = 0
 
     def events(self, event):
