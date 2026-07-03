@@ -12,7 +12,6 @@ class NameEntryScene(Scene):
         self.name = ""
 
     def events(self, event):
-        super().events(event)
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_RETURN and len(self.name) == 3:
                 save_score(self.name, self.score)
