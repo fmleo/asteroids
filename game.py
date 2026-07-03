@@ -1,18 +1,26 @@
 import glob
+import random
 
 import pygame
 
 from asteroid import Asteroid, AsteroidSize
 from bullet import Bullet
 from player import Player
+from powerup import PowerUp, PowerUpType
 from scene import Scene
 from settings import (
     BULLET_RADIUS,
     CORNERS,
     MIDDLE_H,
     MIDDLE_W,
+    MULTI_SHOT_DURATION,
     PLAYER_RADIUS,
+    POWERUP_DROP_CHANCE,
+    POWERUP_RADIUS,
+    RAPID_FIRE_DURATION,
+    RAPID_FIRE_SHOT_DELAY,
     SCREEN_W,
+    SHIELD_DURATION,
     SHOT_DELAY,
 )
 from utils import circles_collide
@@ -37,6 +45,8 @@ class GameScene(Scene):
         self.explosion_sound = pygame.mixer.Sound("./assets/music/explosion.mp3")
         self.explosion_sound.set_volume(0.1)
 
+        self.powerup_font = pygame.font.Font("assets/BlockBlueprint.ttf", 16)
+
         pygame.mixer.stop()
         self.reset_state()
         pygame.mixer.music.play(-1)
@@ -45,6 +55,7 @@ class GameScene(Scene):
         self.player = Player(self.ship_img)
         self.bullets: list[Bullet] = []
         self.asteroids: list[Asteroid] = []
+        self.powerups: list[PowerUp] = []
         self.last_shot_tick = 0
         self.level = 0
         self.lives = 3
@@ -61,16 +72,33 @@ class GameScene(Scene):
         self._update_bullets()
         self._spawn_asteroids()
         self._update_asteroids()
+        self._update_powerups()
         self._check_collisions()
+        self._check_player_powerup_collisions()
         self._cleanup_objects()
 
     def _handle_shooting(self, keys):
         if keys[pygame.K_SPACE]:
-            if pygame.time.get_ticks() - self.last_shot_tick > SHOT_DELAY:
+            delay = RAPID_FIRE_SHOT_DELAY if self.player.rapid_fire_timer > 0 else SHOT_DELAY
+            if pygame.time.get_ticks() - self.last_shot_tick > delay:
                 self.last_shot_tick = pygame.time.get_ticks()
-                self.bullets.append(
-                    Bullet(x=self.player.x, y=self.player.y, angle=self.player.rotation)
-                )
+                if self.player.multi_shot_timer > 0:
+                    for offset in (0, 15, -15):
+                        self.bullets.append(
+                            Bullet(
+                                x=self.player.x,
+                                y=self.player.y,
+                                angle=self.player.rotation + offset,
+                            )
+                        )
+                else:
+                    self.bullets.append(
+                        Bullet(
+                            x=self.player.x,
+                            y=self.player.y,
+                            angle=self.player.rotation,
+                        )
+                    )
 
     def _update_bullets(self):
         for bullet in self.bullets:
@@ -112,6 +140,8 @@ class GameScene(Scene):
                     self._asteroids_to_remove.append(a)
                     self.score += a.score
                     self._asteroids_to_add.extend(a.explode())
+                    if random.random() < POWERUP_DROP_CHANCE:
+                        self.powerups.append(PowerUp(x=a.x, y=a.y))
 
     def _check_player_asteroid_collisions(self):
         if self.player.is_invincible:
@@ -141,12 +171,42 @@ class GameScene(Scene):
             self.bullets.remove(b)
         self.asteroids.extend(self._asteroids_to_add)
 
+    def _update_powerups(self):
+        self._powerups_to_remove: list[PowerUp] = []
+        for p in self.powerups:
+            p.tick()
+            if p.lifetime <= 0:
+                self._powerups_to_remove.append(p)
+        for p in self._powerups_to_remove:
+            self.powerups.remove(p)
+
+    def _check_player_powerup_collisions(self):
+        collected: list[PowerUp] = []
+        for p in self.powerups:
+            if circles_collide(
+                self.player.x, self.player.y, PLAYER_RADIUS,
+                p.x, p.y, POWERUP_RADIUS,
+            ):
+                self.explosion_sound.play()
+                if p.type == PowerUpType.SHIELD:
+                    self.player.shield_timer = SHIELD_DURATION
+                elif p.type == PowerUpType.RAPID_FIRE:
+                    self.player.rapid_fire_timer = RAPID_FIRE_DURATION
+                elif p.type == PowerUpType.MULTI_SHOT:
+                    self.player.multi_shot_timer = MULTI_SHOT_DURATION
+                elif p.type == PowerUpType.EXTRA_LIFE:
+                    self.lives += 1
+                collected.append(p)
+        for p in collected:
+            self.powerups.remove(p)
+
     # -- -- Draw
 
     def draw(self):
         self._draw_background()
         self._draw_bullets()
         self._draw_asteroids()
+        self._draw_powerups()
         self.player.draw(self.display)
         self._draw_hud()
 
@@ -166,6 +226,10 @@ class GameScene(Scene):
             rect = scaled.get_rect(center=(asteroid.x, asteroid.y))
             self.display.blit(scaled, rect)
 
+    def _draw_powerups(self):
+        for p in self.powerups:
+            p.draw(self.display, self.powerup_font)
+
     def _draw_hud(self):
         lives_text = self.font.render(f"Vidas: {self.lives}", True, "white")
         self.display.blit(lives_text, (10, 10))
@@ -175,3 +239,19 @@ class GameScene(Scene):
         score_text = self.font.render(f"{self.score:06}", True, "white")
         score_rect = score_text.get_rect(topright=(SCREEN_W - 10, 10))
         self.display.blit(score_text, score_rect)
+
+        self._draw_powerup_hud()
+
+    def _draw_powerup_hud(self):
+        timers = [
+            (PowerUpType.SHIELD, self.player.shield_timer),
+            (PowerUpType.RAPID_FIRE, self.player.rapid_fire_timer),
+            (PowerUpType.MULTI_SHOT, self.player.multi_shot_timer),
+        ]
+        y = 90
+        for ptype, timer in timers:
+            if timer > 0:
+                secs = timer // 60 + 1
+                text = self.font.render(f"{ptype.name}: {secs}s", True, "white")
+                self.display.blit(text, (10, y))
+                y += 36

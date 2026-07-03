@@ -26,6 +26,9 @@ class Player:
         self.velocity_y = 0.0
         self.rotation = 180
         self.respawn_timer = 0
+        self.shield_timer = 0
+        self.rapid_fire_timer = 0
+        self.multi_shot_timer = 0
 
     @property
     def radius(self) -> int:
@@ -33,7 +36,7 @@ class Player:
 
     @property
     def is_invincible(self) -> bool:
-        return self.respawn_timer > 0
+        return self.respawn_timer > 0 or self.shield_timer > 0
 
     def handle_input(self, keys):
         if keys[pygame.K_LEFT]:
@@ -61,6 +64,12 @@ class Player:
         self.x, self.y = wrap(self.x, self.y)
 
         self.respawn_timer -= 1
+        if self.shield_timer > 0:
+            self.shield_timer -= 1
+        if self.rapid_fire_timer > 0:
+            self.rapid_fire_timer -= 1
+        if self.multi_shot_timer > 0:
+            self.multi_shot_timer -= 1
 
     def draw(self, surface: pygame.Surface):
         player_surf = pygame.Surface((PLAYER_W, PLAYER_H), pygame.SRCALPHA)
